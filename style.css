@@ -320,7 +320,31 @@ svg { flex: none; }
 .recipe-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .recipe-text strong { font-weight: 600; font-size: 1.08rem; }
 .recipe-text .muted { font-size: .93rem; }
-.recipe-chev { color: var(--muted); }
+.recipe-item { position: relative; }
+.recipe-item .recipe-link { padding-inline-end: 56px; }
+.recipe-meta { margin-top: 2px; font-size: .82rem; font-weight: 500; color: var(--accent-strong); }
+.recipe-text .hit { color: var(--timer); font-weight: 500; }
+.recipe-text .muted { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.home > .resume { margin: 0 0 16px; }
+.fav-btn {
+  position: absolute;
+  inset-inline-end: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--border-strong);
+}
+.fav-btn[aria-pressed="true"], .fav-chip[aria-pressed="true"] { color: #e0a400; }
+.fav-chip { cursor: pointer; font: inherit; font-size: .93rem; font-weight: 500; }
+.fav-chip svg, .fav-btn svg { width: 20px; height: 20px; }
+.fav-chip[aria-pressed="true"] svg { color: #e0a400; }
+button.chip.tag { cursor: pointer; font: inherit; font-size: .93rem; font-weight: 500; }
 .recipe-link.broken .recipe-avatar { background: var(--warn-bg); color: var(--warn-text); }
 .list-note { display: flex; gap: 8px; align-items: flex-start; padding: 4px 4px 0; color: var(--muted); font-size: .92rem; }
 .list-note svg { width: 18px; height: 18px; margin-top: 2px; color: var(--danger); }
@@ -663,3 +687,69 @@ svg { flex: none; }
 .sheet li { padding: 9px 0; border-bottom: 1px solid var(--border); }
 .sheet b { color: var(--accent-strong); }
 .voicebar.error .vb-dot { background: var(--warn-text); }
+
+/* ---------- Search ---------- */
+
+.search-bar { max-width: 720px; margin: 0 auto; padding: 0 12px 10px; }
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--muted);
+  box-shadow: var(--shadow-sm);
+}
+.search-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 1.05rem;
+}
+.search-box input::-webkit-search-cancel-button { display: none; }
+.search-clear { display: grid; place-items: center; width: 36px; height: 36px; margin-inline-end: -8px; border: 0; border-radius: 10px; background: none; color: var(--muted); }
+.search-clear svg { width: 18px; height: 18px; }
+
+.filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 -16px;
+  padding: 0 16px 4px;
+  scrollbar-width: none;
+}
+.filters::-webkit-scrollbar { display: none; }
+.filter {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: .93rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.filter svg { width: 16px; height: 16px; color: var(--muted); }
+.filter.on { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); }
+.filter-select { appearance: none; -webkit-appearance: none; padding-inline-end: 30px; font: inherit; font-size: .93rem;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: left 16px center, left 11px center; background-size: 5px 5px; background-repeat: no-repeat; }
+.filter.on svg { color: currentColor; }
+
+.results-head { display: flex; align-items: center; justify-content: space-between; margin: 14px 4px 8px; font-size: .92rem; }
+.results-head .link-btn { display: inline-flex; align-items: center; gap: 6px; }
+.results-head svg { width: 18px; height: 18px; }
+.recipe-list .empty { padding: 20px 4px; color: var(--muted); text-align: center; }

@@ -27,6 +27,10 @@
     bulb: svg('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>'),
     mic: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>'),
     speaker: svg('<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>'),
+    search: svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
+    star: svg('<path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>'),
+    starOn: svg('<path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>', true),
+    shuffle: svg('<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>'),
     file: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 12v6M9 15l3 3 3-3"/>'),
   };
 
@@ -66,6 +70,7 @@
   const loadSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; } };
   const recipeKey = r => r.id || r.title;
   const onRecipe = () => document.body.dataset.view === 'recipe';
+  const onHome = () => document.body.dataset.view === 'home';
 
   /* ---------- Loading ---------- */
 
@@ -147,6 +152,35 @@
 
   /* ---------- Home ---------- */
 
+  /* ---------- Favorites ---------- */
+
+  const FAV_KEY = 'rv.favorites';
+  let favorites = new Set();
+  try { favorites = new Set(JSON.parse(localStorage.getItem(FAV_KEY)) || []); } catch {}
+
+  function toggleFavorite(key) {
+    if (favorites.has(key)) favorites.delete(key); else favorites.add(key);
+    try { localStorage.setItem(FAV_KEY, JSON.stringify([...favorites])); } catch {}
+  }
+
+  const favButton = (key, cls = 'fav-btn') => {
+    const on = favorites.has(key);
+    return `<button class="${cls}" data-act="fav" data-key="${esc(key)}" aria-pressed="${on}" aria-label="${on ? 'הסרה מהמועדפים' : 'הוספה למועדפים'}">${on ? ICON.starOn : ICON.star}</button>`;
+  };
+
+  /* ---------- Home ---------- */
+
+  // Search/filter state survives opening a recipe and coming back (and reloads in the same tab).
+  const HOME_KEY = 'rv.home';
+  let home = { q: '', tag: '', time: 0, fav: false, category: '', cuisine: '' };
+  const NO_FILTERS = { q: '', tag: '', time: 0, fav: false, category: '', cuisine: '' };
+  try { home = { ...home, ...JSON.parse(sessionStorage.getItem(HOME_KEY)) }; } catch {}
+  const saveHome = () => { try { sessionStorage.setItem(HOME_KEY, JSON.stringify(home)); } catch {} };
+
+  // catalog: [{ key, title, description, recipe?, error?, ix?, link: { act, attr, href } }]
+  let catalog = [], listNote = '', listLoading = true;
+  const TIME_FILTERS = [[30, "עד 30 דק'"], [60, 'עד שעה']];
+
   function renderHome(error) {
     document.body.dataset.view = 'home';
     releaseWake();
@@ -161,12 +195,15 @@
           <h1>מתכונים</h1>
           ${themeButton()}
         </div>
+        <div class="search-bar">
+          <label class="search-box">
+            ${ICON.search}
+            <input id="search" type="search" enterkeyhint="search" autocomplete="off" placeholder="חיפוש לפי שם, מרכיב או תגית" value="${esc(home.q)}" aria-label="חיפוש מתכון">
+            <button class="search-clear" data-act="clear-search" aria-label="ניקוי החיפוש" ${home.q ? '' : 'hidden'}>${ICON.x}</button>
+          </label>
+        </div>
       </header>
       <main class="home">
-        <div class="home-hero">
-          <h2>מה מבשלים היום?</h2>
-          <p class="muted">בוחרים מתכון ומבשלים שלב אחרי שלב</p>
-        </div>
         ${error ? `<section class="card errors" role="alert"><h2>${ICON.alert}${esc(error.title)}</h2><ul>${error.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></section>` : ''}
         ${session?.recipe ? `
           <button class="resume" data-act="resume">
@@ -177,11 +214,15 @@
             </span>
             <span class="resume-go">${ICON.chevL}</span>
           </button>` : ''}
-        <h3 class="section-label">המתכונים שלי${Drive.enabled ? ' · מגוגל דרייב' : ''}</h3>
+        <div class="filters" id="filters"></div>
+        <div class="results-head">
+          <span id="result-count" class="muted" role="status"></span>
+          <button class="link-btn" data-act="random">${ICON.shuffle}הפתעה</button>
+        </div>
         <ul class="recipe-list" id="recipe-list"><li class="muted">טוען…</li></ul>
-        <h3 class="section-label">מתכון חדש</h3>
+        <h3 class="section-label">טעינת קובץ</h3>
         <section class="card">
-          <label class="btn primary block">${ICON.file}בחירת קובץ JSON<input type="file" id="file-input" accept=".json,application/json" hidden></label>
+          <label class="btn block">${ICON.file}בחירת קובץ JSON<input type="file" id="file-input" accept=".json,application/json" hidden></label>
           <details class="paste">
             <summary>או הדבקת JSON</summary>
             <textarea id="paste-input" dir="ltr" rows="8" spellcheck="false" placeholder='{ "title": "...", "ingredients": [], "steps": [] }'></textarea>
@@ -190,68 +231,168 @@
         </section>
       </main>`;
     syncTheme();
+    renderFilters();
+    renderResults();
     loadRecipeList();
   }
 
-  const recipeItem = ({ href, act, attr, title, description, error }) => `
-    <li><a class="recipe-link${error ? ' broken' : ''}" href="${href}" data-act="${act}" ${attr}>
-      <span class="recipe-avatar" aria-hidden="true">${error ? ICON.alert : esc([...title][0] || '?')}</span>
-      <span class="recipe-text"><strong>${esc(title)}</strong>${error ? '<span class="muted">הקובץ לא תקין. לחצו לפרטים</span>' : description ? `<span class="muted">${esc(description)}</span>` : ''}</span>
-      <span class="recipe-chev">${ICON.chevL}</span>
-    </a></li>`;
-
-  function renderRecipeList(items, note = '') {
-    const ul = document.getElementById('recipe-list');
-    if (!ul?.isConnected) return;
-    ul.innerHTML = (items.length ? items.join('') : '<li class="muted">אין מתכונים ברשימה</li>') + (note ? `<li class="list-note">${note}</li>` : '');
+  function renderFilters() {
+    const el = document.getElementById('filters');
+    if (!el) return;
+    // Categories: tags used by at least two recipes, most common first.
+    const counts = new Map();
+    catalog.forEach(c => (c.recipe?.tags || []).forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
+    // The selected category goes first so it's visible without scrolling the row.
+    const tags = [...counts].filter(([t, n]) => n >= 2 || t === home.tag)
+      .sort((a, b) => (b[0] === home.tag) - (a[0] === home.tag) || b[1] - a[1]).map(([t]) => t);
+    const chip = (on, act, attr, label) => `<button class="filter${on ? ' on' : ''}" data-act="${act}" ${attr} aria-pressed="${on}">${label}</button>`;
+    // Category / cuisine dropdowns list only values that some recipe actually has.
+    const select = (field, all) => {
+      const values = [...new Set(catalog.map(c => c.recipe?.[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'he'));
+      if (home[field] && !values.includes(home[field])) values.unshift(home[field]);
+      if (!values.length) return '';
+      return `<select class="filter filter-select${home[field] ? ' on' : ''}" data-filter="${field}" aria-label="${all}">
+        <option value="">${all}</option>${values.map(v => `<option value="${esc(v)}"${v === home[field] ? ' selected' : ''}>${esc(v)}</option>`).join('')}
+      </select>`;
+    };
+    el.innerHTML = [
+      select('category', 'כל הקטגוריות'),
+      select('cuisine', 'כל הסגנונות'),
+      chip(home.fav, 'filter-fav', '', `${ICON.starOn}מועדפים`),
+      ...(timeFiltersUseful() ? TIME_FILTERS.map(([m, label]) => chip(home.time === m, 'filter-time', `data-min="${m}"`, `${ICON.clock}${label}`)) : []),
+      ...tags.map(t => chip(home.tag === t, 'filter-tag', `data-tag="${esc(t)}"`, esc(t))),
+    ].join('');
   }
 
-  function driveListHtml(items) {
+  // Time filters hide recipes without a known total time, so offer them only when most have one.
+  const timeFiltersUseful = () => home.time || catalog.filter(c => c.ix?.minutes).length >= catalog.length / 3;
+
+  function filteredResults() {
+    const qTerms = Search.terms(home.q);
+    const out = [];
+    for (const c of catalog) {
+      if (home.fav && !favorites.has(c.key)) continue;
+      if (home.tag && !(c.recipe?.tags || []).includes(home.tag)) continue;
+      if (home.category && c.recipe?.category !== home.category) continue;
+      if (home.cuisine && c.recipe?.cuisine !== home.cuisine) continue;
+      if (home.time && !(c.ix?.minutes && c.ix.minutes <= home.time)) continue;
+      let m = { score: 0, ingredients: [] };
+      if (qTerms.length) {
+        m = c.ix ? Search.match(c.ix, qTerms) : (qTerms.every(t => Search.norm(c.title).includes(t.stem)) ? m : null);
+        if (!m) continue;
+      }
+      // Show matched ingredients only when the name alone doesn't explain the result.
+      out.push({ ...c, score: m.score, hits: m.inTitle ? [] : m.ingredients });
+    }
+    // Best matches first when searching; otherwise favorites first, then by name.
+    return out.sort((a, b) =>
+      (b.score - a.score) || (favorites.has(b.key) - favorites.has(a.key)) || a.title.localeCompare(b.title, 'he'));
+  }
+
+  function renderResults() {
+    const ul = document.getElementById('recipe-list');
+    if (!ul?.isConnected) return;
+    const results = filteredResults();
+    const filtered = home.q || home.tag || home.time || home.fav || home.category || home.cuisine;
+    document.getElementById('result-count').textContent = listLoading && !catalog.length ? ''
+      : filtered ? `נמצאו ${results.length} מתוך ${catalog.length}` : `${catalog.length} מתכונים`;
+    const empty = listLoading && !catalog.length ? '<li class="muted">טוען…</li>'
+      : filtered ? `<li class="empty">לא נמצאו מתכונים. <button class="link-btn" data-act="clear-filters">ניקוי החיפוש והמסננים</button></li>`
+      : '<li class="muted">אין מתכונים ברשימה</li>';
+    ul.innerHTML = (results.length ? results.map(recipeItem).join('') : empty) + (listNote ? `<li class="list-note">${listNote}</li>` : '');
+  }
+
+  function recipeItem(c) {
+    const r = c.recipe;
+    const sub = c.error ? 'הקובץ לא תקין. לחצו לפרטים'
+      : c.hits?.length ? `מרכיבים: ${c.hits.slice(0, 4).join(', ')}`
+      : c.description;
+    const meta = [c.ix?.minutes && Fmt.minutes(c.ix.minutes), r?.kashrut, r?.difficulty].filter(Boolean);
+    return `
+      <li class="recipe-item">
+        <a class="recipe-link${c.error ? ' broken' : ''}" href="${c.link.href}" data-act="${c.link.act}" ${c.link.attr}>
+          <span class="recipe-avatar" aria-hidden="true">${c.error ? ICON.alert : esc([...c.title][0] || '?')}</span>
+          <span class="recipe-text">
+            <strong>${esc(c.title)}</strong>
+            ${sub ? `<span class="muted${c.hits?.length && !c.error ? ' hit' : ''}">${esc(sub)}</span>` : ''}
+            ${meta.length ? `<span class="recipe-meta">${esc(meta.join(' · '))}</span>` : ''}
+          </span>
+        </a>
+        ${c.error ? '' : favButton(c.key)}
+      </li>`;
+  }
+
+  function setCatalog(entries, note = '') {
+    catalog = entries;
+    listNote = note;
+    renderFilters();
+    renderResults();
+  }
+
+  function driveEntries(items) {
     driveItems.clear();
     items.forEach(it => driveItems.set(it.id, it));
-    return items
-      .map(it => ({ ...it, title: it.recipe?.title || it.name.replace(/\.json$/i, '') }))
-      .sort((a, b) => a.title.localeCompare(b.title, 'he'))
-      .map(it => recipeItem({
-        href: `?drive=${encodeURIComponent(it.id)}`, act: 'open-drive', attr: `data-id="${esc(it.id)}"`,
-        title: it.title, description: it.recipe?.description, error: it.error,
-      }));
+    return items.map(it => ({
+      key: it.recipe ? recipeKey(it.recipe) : it.id,
+      title: it.recipe?.title || it.name.replace(/\.json$/i, ''),
+      description: it.recipe?.description,
+      recipe: it.recipe,
+      error: it.error,
+      ix: it.recipe && Search.index(it.recipe),
+      link: { act: 'open-drive', attr: `data-id="${esc(it.id)}"`, href: `?drive=${encodeURIComponent(it.id)}` },
+    }));
   }
 
   async function loadRecipeList() {
+    listLoading = true;
     if (Drive.enabled) {
       // Show the cached list at once, then refresh from Drive.
       const cached = Drive.cached();
-      if (cached.length) renderRecipeList(driveListHtml(cached));
+      if (cached.length) setCatalog(driveEntries(cached));
       try {
         let last = 0;
         const { items, error } = await Drive.list((partial, total) => {
-          if (partial.length === total || Date.now() - last < 300) return;
+          if (partial.length === total || Date.now() - last < 400) return;
           last = Date.now();
-          renderRecipeList(driveListHtml(partial.length > cached.length ? partial : cached), `<span>טוען מתכונים מהדרייב… ${partial.length}/${total}</span>`);
+          setCatalog(driveEntries(partial.length > cached.length ? partial : cached), `<span>טוען מתכונים מהדרייב… ${partial.length}/${total}</span>`);
         });
-        renderRecipeList(driveListHtml(items.filter(it => !(error && it.error === error))),
-          error ? `${ICON.alert}<span>${esc(error)}</span>` : '');
+        listLoading = false;
+        setCatalog(driveEntries(items.filter(it => !(error && it.error === error))), error ? `${ICON.alert}<span>${esc(error)}</span>` : '');
       } catch (e) {
-        renderRecipeList(cached.length ? driveListHtml(cached) : [], `${ICON.alert}<span>${esc(e.message)}${cached.length ? ' מוצגת הרשימה השמורה.' : ''}</span>`);
+        listLoading = false;
+        setCatalog(driveEntries(cached), `${ICON.alert}<span>${esc(e.message)}${cached.length ? ' מוצגת הרשימה השמורה.' : ''}</span>`);
       }
       return;
     }
-    // recipes/ holds personal recipes and isn't published; examples/ ships with the site.
-    const fetchList = async path => {
-      const res = await fetch(path, { cache: 'no-cache' });
-      if (!res.ok) throw new Error();
-      return res.json();
-    };
+    // Without Drive: a local recipes/index.json (not published) for development.
     try {
-      const list = await fetchList('recipes/index.json').catch(() => fetchList('examples/index.json'));
-      renderRecipeList(list.map(it => recipeItem({
-        href: `?recipe=${encodeURIComponent(it.file)}`, act: 'open-url', attr: `data-path="${esc(it.file)}"`,
-        title: it.title, description: it.description,
+      const res = await fetch('recipes/index.json', { cache: 'no-cache' });
+      if (!res.ok) throw new Error();
+      const list = await res.json();
+      listLoading = false;
+      setCatalog(list.map(it => ({
+        key: it.file, title: it.title, description: it.description,
+        link: { act: 'open-url', attr: `data-path="${esc(it.file)}"`, href: `?recipe=${encodeURIComponent(it.file)}` },
       })));
     } catch {
-      renderRecipeList([], 'לא ניתן לטעון את רשימת המתכונים. צריך להריץ את האתר דרך שרת.');
+      listLoading = false;
+      setCatalog([], `${ICON.alert}<span>אין מקור מתכונים. מגדירים תיקיית גוגל דרייב ב-config.js.</span>`);
     }
+  }
+
+  function openRandom() {
+    const pool = filteredResults().filter(c => !c.error);
+    if (!pool.length) return;
+    const c = pool[Math.floor(Math.random() * pool.length)];
+    if (c.link.act === 'open-drive') openDrive(c.link.attr.match(/data-id="([^"]+)"/)[1]);
+    else openUrl(c.link.attr.match(/data-path="([^"]+)"/)[1]);
+  }
+
+  function setHome(patch) {
+    home = { ...home, ...patch };
+    saveHome();
+    renderFilters();
+    renderResults();
   }
 
 
@@ -347,12 +488,15 @@
   }
 
   const altText = ing => ing.alternatives?.length ? `או: ${ing.alternatives.join(' / ')}` : '';
-  const yieldText = r => r.yield ? `${Fmt.amount(r.yield.amount)} ${r.yield.unit}` : '';
+  const yieldText = r => r.yield ? `${Fmt.num(r.yield.amount, r.yield.maxAmount)} ${r.yield.unit}` : '';
+  const servingsText = r => r.servings ? `${Fmt.num(r.servings, r.maxServings)} מנות` : '';
 
+  // Steps with a "method" are alternatives; the estimate follows the first method only.
   function totalTime(r) {
     let a = 0, b = 0, any = false;
+    const method = r.steps.find(s => s.method)?.method;
     for (const s of r.steps) {
-      if (!s.time) continue;
+      if (!s.time || (s.method && s.method !== method)) continue;
       any = true;
       a += s.time.minutes;
       b += s.time.maxMinutes ?? s.time.minutes;
@@ -374,14 +518,16 @@
   function viewIngredients() {
     const r = S.recipe;
     const chips = [];
-    if (r.servings) chips.push(`<span class="chip">${ICON.users}${Fmt.amount(r.servings)} מנות</span>`);
+    if (r.servings) chips.push(`<span class="chip">${ICON.users}${esc(servingsText(r))}</span>`);
     if (r.yield) chips.push(`<span class="chip">${esc(yieldText(r))}</span>`);
     const total = r.totalTime ? Fmt.range(r.totalTime.minutes, r.totalTime.maxMinutes) : totalTime(r);
     if (total) chips.push(`<span class="chip">${ICON.clock}${r.activeTime ? 'סה״כ ' : ''}${esc(total)}</span>`);
     if (r.activeTime) chips.push(`<span class="chip">${ICON.clock}עבודה ${esc(Fmt.range(r.activeTime.minutes, r.activeTime.maxMinutes))}</span>`);
     if (r.difficulty) chips.push(`<span class="chip">רמת קושי: ${esc(r.difficulty)}</span>`);
     if (r.kashrut) chips.push(`<span class="chip">${esc(r.kashrut)}</span>`);
-    (r.tags || []).forEach(t => chips.push(`<span class="chip tag">${esc(t)}</span>`));
+    (r.tags || []).forEach(t => chips.push(`<button class="chip tag" data-act="tag-search" data-tag="${esc(t)}" aria-label="מתכונים נוספים עם התגית ${esc(t)}">${esc(t)}</button>`));
+    const fav = favorites.has(recipeKey(r));
+    chips.unshift(`<button class="chip fav-chip" data-act="fav" data-key="${esc(recipeKey(r))}" aria-pressed="${fav}">${fav ? ICON.starOn : ICON.star}${fav ? 'במועדפים' : 'למועדפים'}</button>`);
     const done = r.ingredients.filter(i => S.checked[i.id]).length;
     const all = r.ingredients.length;
 
@@ -431,7 +577,8 @@
   function timerDefs(s, i) {
     const fallback = s.title || `שלב ${i + 1}`;
     if (s.timers?.length) return s.timers.map((t, k) => ({ key: `${i}:${k}`, label: t.label || fallback, minutes: t.minutes }));
-    if (s.time) return [{ key: `${i}:t`, label: fallback, minutes: s.time.minutes }];
+    // No automatic countdown for long waits (e.g. pickling for days).
+    if (s.time && s.time.minutes <= 12 * 60) return [{ key: `${i}:t`, label: fallback, minutes: s.time.minutes }];
     return [];
   }
 
@@ -471,7 +618,7 @@
       </div>
       <article class="step">
         <div class="step-head">
-          <p class="step-count">שלב ${i + 1} מתוך ${r.steps.length}${s.group ? ` · ${esc(s.group)}` : ''}</p>
+          <p class="step-count">שלב ${i + 1} מתוך ${r.steps.length}${s.group ? ` · ${esc(s.group)}` : ''}${s.method ? ` · אפשרות: ${esc(s.method)}` : ''}</p>
           ${Voice.canSpeak ? `<button class="icon-btn speak-btn" data-act="speak" aria-label="הקראת השלב" title="הקראת השלב">${ICON.speaker}</button>` : ''}
         </div>
         ${s.title ? `<h2 class="step-title">${esc(s.title)}</h2>` : ''}
@@ -530,7 +677,7 @@
     const lines = [r.title];
     if (r.description) lines.push(r.description);
     if (r.author) lines.push(`המתכון של ${r.author}`);
-    if (r.servings) lines.push(`${Fmt.amount(r.servings)} מנות`);
+    if (r.servings) lines.push(servingsText(r));
     if (r.yield) lines.push(yieldText(r));
     const meta = [
       r.totalTime && `זמן כולל: ${Fmt.range(r.totalTime.minutes, r.totalTime.maxMinutes)}`,
@@ -549,7 +696,7 @@
     r.steps.forEach((s, k) => {
       if (s.group && s.group !== r.steps[k - 1]?.group) lines.push('', `${s.group}:`);
       const extra = [s.time && Fmt.range(s.time.minutes, s.time.maxMinutes), s.temperature && Fmt.temp(s.temperature)].filter(Boolean);
-      lines.push(`${k + 1}. ${s.instruction}${extra.length ? ` (${extra.join(', ')})` : ''}${s.doneWhen ? ` סימן שמוכן: ${s.doneWhen}.` : ''}`);
+      lines.push(`${k + 1}. ${s.method ? `(${s.method}) ` : ''}${s.instruction}${extra.length ? ` (${extra.join(', ')})` : ''}${s.doneWhen ? ` סימן שמוכן: ${s.doneWhen}.` : ''}`);
     });
     if (r.notes?.length) lines.push('', 'הערות:', ...r.notes);
     return lines.join('\n');
@@ -827,6 +974,32 @@
       case 'resume': resume(); break;
       case 'open-url': openUrl(el.dataset.path); break;
       case 'open-drive': openDrive(id); break;
+      case 'fav': {
+        toggleFavorite(el.dataset.key);
+        const on = favorites.has(el.dataset.key);
+        el.setAttribute('aria-pressed', String(on));
+        el.innerHTML = el.classList.contains('fav-chip') ? `${on ? ICON.starOn : ICON.star}${on ? 'במועדפים' : 'למועדפים'}` : (on ? ICON.starOn : ICON.star);
+        if (home.fav && onHome()) renderResults();
+        break;
+      }
+      case 'filter-fav': setHome({ fav: !home.fav }); break;
+      case 'filter-time': setHome({ time: home.time === +el.dataset.min ? 0 : +el.dataset.min }); break;
+      case 'filter-tag': setHome({ tag: home.tag === el.dataset.tag ? '' : el.dataset.tag }); break;
+      case 'clear-search': {
+        const input = document.getElementById('search');
+        input.value = '';
+        el.hidden = true;
+        setHome({ q: '' });
+        input.focus();
+        break;
+      }
+      case 'clear-filters': setHome({ ...NO_FILTERS }); document.getElementById('search').value = ''; break;
+      case 'random': openRandom(); break;
+      case 'tag-search':
+        home = { ...NO_FILTERS, tag: el.dataset.tag };
+        saveHome();
+        goHome();
+        break;
       case 'paste': parseAndOpen(document.getElementById('paste-input').value, { type: 'paste' }); break;
       case 'tab': setTab(el.dataset.tab); break;
       case 'goto': goStep(+el.dataset.step); break;
@@ -849,11 +1022,23 @@
     }
   });
 
+  document.addEventListener('input', e => {
+    if (e.target.id !== 'search') return;
+    document.querySelector('.search-clear').hidden = !e.target.value;
+    setHome({ q: e.target.value });
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.target.id === 'search' && e.key === 'Enter') e.target.blur(); // closes the phone keyboard
+  });
+
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.id === 'file-input') {
       const f = el.files[0];
       if (f) f.text().then(t => parseAndOpen(t, { type: 'file', name: f.name }));
+    } else if (el.dataset.filter) {
+      setHome({ [el.dataset.filter]: el.value });
     } else if (el.dataset.ing) {
       S.checked[el.dataset.ing] = el.checked;
       saveSession();
