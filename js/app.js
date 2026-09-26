@@ -99,6 +99,16 @@
     openRecipe(data, { type: 'drive', id }, opts);
   }
 
+  // ?id=<recipe id>: lets another tool (e.g. a bot that knows the recipe table) link straight to a recipe.
+  async function openRecipeId(recipeId) {
+    if (!Drive.enabled) return renderHome({ title: 'לא ניתן לפתוח לפי מזהה', items: ['פתיחה לפי מזהה עובדת רק עם תיקיית גוגל דרייב.'] });
+    let fileId;
+    try { fileId = await Drive.findById(recipeId); }
+    catch (e) { return renderHome({ title: 'שגיאה בחיפוש המתכון בדרייב', items: [e.message] }); }
+    if (!fileId) return renderHome({ title: 'המתכון לא נמצא', items: [`אין בתיקייה מתכון עם המזהה "${recipeId}".`] });
+    openDrive(fileId, { replace: true });
+  }
+
   function parseAndOpen(text, source) {
     let data;
     try { data = JSON.parse(text); }
@@ -1062,10 +1072,16 @@
   /* ---------- Boot ---------- */
 
   const params = new URLSearchParams(location.search);
-  const path = params.get('recipe'), driveId = params.get('drive');
+  const path = params.get('recipe'), driveId = params.get('drive'), recipeId = params.get('id'), query = params.get('q');
   const session = loadSession();
-  if (driveId) openDrive(driveId, { replace: true });
+  if (recipeId) openRecipeId(recipeId.trim());
+  else if (driveId) openDrive(driveId, { replace: true });
   else if (path) openUrl(path, { replace: true });
   else if (history.state?.view === 'recipe' && session?.recipe) { S = session; renderRecipe(); requestWake(); }
-  else { history.replaceState({ view: 'home' }, '', location.pathname); renderHome(); }
+  else {
+    // ?q=<text>: open the list with a search already typed in.
+    if (query != null) { home = { q: query, tag: '', time: 0, fav: false }; saveHome(); }
+    history.replaceState({ view: 'home' }, '', location.pathname);
+    renderHome();
+  }
 })();

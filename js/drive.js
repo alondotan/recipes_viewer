@@ -118,5 +118,14 @@ const Drive = (() => {
     }
   }
 
-  return { enabled, list, cached, get };
+  // Recipe files are named <recipe id>.json, so one listing request finds a recipe
+  // without downloading the rest. A cached copy answers even faster (and offline).
+  async function findById(recipeId) {
+    const hit = Object.entries(loadCache()).find(([, v]) => v.recipe?.id === recipeId);
+    if (hit) return hit[0];
+    const name = `${recipeId}.json`.toLowerCase();
+    return (await listFiles()).find(f => f.name.toLowerCase() === name)?.id || null;
+  }
+
+  return { enabled, list, cached, get, findById };
 })();
