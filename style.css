@@ -481,6 +481,8 @@ svg { flex: none; }
 .step-title { margin: 4px 0 0; font-size: 1.65rem; font-weight: 700; }
 .step .chips { margin: 12px 0 4px; }
 .instruction { margin: 14px 0 16px; font-size: 1.3rem; line-height: 1.65; }
+.done-when { margin: -6px 0 16px; font-size: 1.05rem; color: var(--muted); }
+.done-when strong { color: var(--text); }
 
 .callout {
   display: flex;
@@ -660,3 +662,4 @@ svg { flex: none; }
 .sheet ul { margin: 0 0 16px; padding: 0; list-style: none; }
 .sheet li { padding: 9px 0; border-bottom: 1px solid var(--border); }
 .sheet b { color: var(--accent-strong); }
+.voicebar.error .vb-dot { background: var(--warn-text); }

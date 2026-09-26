@@ -369,8 +369,11 @@
     const chips = [];
     if (r.servings) chips.push(`<span class="chip">${ICON.users}${Fmt.amount(r.servings)} מנות</span>`);
     if (r.yield) chips.push(`<span class="chip">${esc(yieldText(r))}</span>`);
-    const total = totalTime(r);
-    if (total) chips.push(`<span class="chip">${ICON.clock}${esc(total)}</span>`);
+    const total = r.totalTime ? Fmt.range(r.totalTime.minutes, r.totalTime.maxMinutes) : totalTime(r);
+    if (total) chips.push(`<span class="chip">${ICON.clock}${r.activeTime ? 'סה״כ ' : ''}${esc(total)}</span>`);
+    if (r.activeTime) chips.push(`<span class="chip">${ICON.clock}עבודה ${esc(Fmt.range(r.activeTime.minutes, r.activeTime.maxMinutes))}</span>`);
+    if (r.difficulty) chips.push(`<span class="chip">רמת קושי: ${esc(r.difficulty)}</span>`);
+    if (r.kashrut) chips.push(`<span class="chip">${esc(r.kashrut)}</span>`);
     (r.tags || []).forEach(t => chips.push(`<span class="chip tag">${esc(t)}</span>`));
     const done = r.ingredients.filter(i => S.checked[i.id]).length;
     const all = r.ingredients.length;
@@ -467,6 +470,7 @@
         ${s.title ? `<h2 class="step-title">${esc(s.title)}</h2>` : ''}
         ${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}
         <p class="instruction">${esc(s.instruction)}</p>
+        ${s.doneWhen ? `<p class="done-when"><strong>סימן שמוכן:</strong> ${esc(s.doneWhen)}</p>` : ''}
         ${s.warning ? `<div class="callout warn">${ICON.alert}<p>${esc(s.warning)}</p></div>` : ''}
         ${timerButtons(s, i)}
         ${s.ingredients?.length ? `
@@ -521,6 +525,13 @@
     if (r.author) lines.push(`המתכון של ${r.author}`);
     if (r.servings) lines.push(`${Fmt.amount(r.servings)} מנות`);
     if (r.yield) lines.push(yieldText(r));
+    const meta = [
+      r.totalTime && `זמן כולל: ${Fmt.range(r.totalTime.minutes, r.totalTime.maxMinutes)}`,
+      r.activeTime && `זמן עבודה: ${Fmt.range(r.activeTime.minutes, r.activeTime.maxMinutes)}`,
+      r.difficulty && `רמת קושי: ${r.difficulty}`,
+      r.kashrut,
+    ].filter(Boolean);
+    if (meta.length) lines.push(meta.join(' · '));
     lines.push('', 'מרכיבים:');
     for (const g of groupIngredients(r.ingredients)) {
       if (g.name) lines.push('', `${g.name}:`);
@@ -531,7 +542,7 @@
     r.steps.forEach((s, k) => {
       if (s.group && s.group !== r.steps[k - 1]?.group) lines.push('', `${s.group}:`);
       const extra = [s.time && Fmt.range(s.time.minutes, s.time.maxMinutes), s.temperature && Fmt.temp(s.temperature)].filter(Boolean);
-      lines.push(`${k + 1}. ${s.instruction}${extra.length ? ` (${extra.join(', ')})` : ''}`);
+      lines.push(`${k + 1}. ${s.instruction}${extra.length ? ` (${extra.join(', ')})` : ''}${s.doneWhen ? ` סימן שמוכן: ${s.doneWhen}.` : ''}`);
     });
     if (r.notes?.length) lines.push('', 'הערות:', ...r.notes);
     return lines.join('\n');
@@ -603,11 +614,12 @@
 
   /* ---------- Voice ---------- */
 
-  let voiceOn = false, voiceState = 'listening', heard = '', heardTimer = 0;
+  let voiceOn = false, voiceState = 'listening', voiceError = '', heard = '', heardTimer = 0;
 
   function stepSpeech(i) {
     const s = S.recipe.steps[i], n = S.recipe.steps.length;
     const parts = [`שלב ${i + 1}${s.title ? `: ${s.title}` : ''}.`, s.instruction];
+    if (s.doneWhen) parts.push(`סימן שמוכן: ${s.doneWhen}.`);
     if (s.warning) parts.push(`שימו לב: ${s.warning}`);
     if (s.temperature) parts.push(`טמפרטורה: ${Fmt.temp(s.temperature).replace(' · ', ', ')}.`);
     const idle = timerDefs(s, i).filter(d => !Timers.byKey(d.key));
@@ -679,16 +691,17 @@
 
   function onHeard(alternatives) {
     const c = Voice.parse(alternatives);
-    if (!c) return;
-    heard = alternatives[0];
+    // Unrecognized phrases are shown too, so it's clear the mic is hearing.
+    heard = c ? `שמעתי: "${alternatives[0]}"` : `שמעתי: "${alternatives[0]}" · לא פקודה`;
     clearTimeout(heardTimer);
-    heardTimer = setTimeout(() => { heard = ''; renderVoiceBar(); }, 2500);
-    runCommand(c);
+    heardTimer = setTimeout(() => { heard = ''; renderVoiceBar(); }, 3000);
+    if (c) runCommand(c);
     renderVoiceBar();
   }
 
-  function setVoiceState(state) {
+  function setVoiceState(state, detail = '') {
     voiceState = state;
+    voiceError = detail;
     if (state === 'denied') {
       voiceOn = false;
       document.getElementById('voice-btn')?.setAttribute('aria-pressed', 'false');
@@ -701,7 +714,8 @@
     if (!el) return;
     if (!voiceOn && voiceState !== 'denied') { el.innerHTML = ''; return; }
     const text = voiceState === 'denied' ? 'אין גישה למיקרופון. אפשר לאשר בהגדרות הדפדפן.'
-      : heard ? `שמעתי: "${esc(heard)}"`
+      : voiceState === 'error' ? `שגיאה בזיהוי דיבור (${esc(voiceError)}). מנסה שוב…`
+      : heard ? esc(heard)
       : voiceState === 'speaking' ? 'מקריא… אפשר לומר "עצור"'
       : 'מקשיב. נסו "הבא", "שוב" או "טיימר"';
     el.innerHTML = `
@@ -717,9 +731,10 @@
     document.getElementById('voice-btn')?.setAttribute('aria-pressed', String(voiceOn));
     if (voiceOn) {
       voiceState = 'listening';
-      Voice.listen(onHeard, setVoiceState);
       if (S.tab !== 'steps') setTab('steps');
+      // Speak first: the mic starts when speech ends, so a permission prompt isn't cut off.
       say(`מצב קולי פעיל. ${stepSpeech(S.step)}`);
+      Voice.listen(onHeard, setVoiceState);
     } else {
       Voice.stopListening();
       Voice.stopSpeaking();

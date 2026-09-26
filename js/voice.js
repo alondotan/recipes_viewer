@@ -15,71 +15,116 @@ const Voice = (() => {
     speechSynthesis.addEventListener?.('voiceschanged', pickVoice);
   }
 
-  let speaking = false, quietUntil = 0, gen = 0;
+  let speaking = false, gen = 0, watchdog = 0;
+  // Chrome skips onend for utterances that get garbage-collected, so keep them referenced.
+  const live = new Set();
 
+  function finishSpeaking(my, onend) {
+    if (my !== gen || !speaking) return;
+    speaking = false;
+    clearInterval(watchdog);
+    live.clear();
+    scheduleStart(300);
+    onend?.();
+  }
+
+  // Half-duplex: the mic is off while we talk, so we never hear ourselves.
   // Long utterances get cut off in some browsers, so speak sentence by sentence.
   function speak(text, onend) {
     if (!canSpeak) return onend?.();
     speechSynthesis.cancel();
     const my = ++gen;
-    const parts = String(text).split(/(?<=[.!?:])\s+/).filter(Boolean);
     speaking = true;
+    abortRec();
+    const parts = String(text).split(/(?<=[.!?:])\s+/).filter(Boolean);
     parts.forEach((part, k) => {
       const u = new SpeechSynthesisUtterance(part);
       u.lang = 'he-IL';
       if (heVoice) u.voice = heVoice;
-      if (k === parts.length - 1) {
-        u.onend = u.onerror = () => {
-          if (my !== gen) return;
-          speaking = false;
-          quietUntil = Date.now() + 1500;
-          onend?.();
-        };
-      }
+      if (k === parts.length - 1) u.onend = u.onerror = () => finishSpeaking(my, onend);
+      live.add(u);
       speechSynthesis.speak(u);
     });
+    // Fallback for browsers where onend never fires at all.
+    const began = Date.now();
+    clearInterval(watchdog);
+    watchdog = setInterval(() => {
+      if (Date.now() - began > 800 && !speechSynthesis.speaking && !speechSynthesis.pending) finishSpeaking(my, onend);
+    }, 300);
   }
 
   function stopSpeaking() {
     gen++;
+    clearInterval(watchdog);
     if (canSpeak) speechSynthesis.cancel();
-    if (speaking) quietUntil = Date.now() + 800;
-    speaking = false;
+    live.clear();
+    if (speaking) { speaking = false; scheduleStart(300); }
   }
 
   /* ---------- Listening ---------- */
 
-  let rec = null, listening = false, handler = null, stateFn = null, startedAt = 0;
+  let rec = null, listening = false, handler = null, stateFn = null, startedAt = 0, restartTimer = 0;
+
+  function scheduleStart(ms) {
+    clearTimeout(restartTimer);
+    if (listening) restartTimer = setTimeout(start, ms);
+  }
+
+  function abortRec() {
+    clearTimeout(restartTimer);
+    const r = rec;
+    rec = null;
+    try { r?.abort(); } catch {}
+  }
 
   function start() {
-    if (!listening || document.hidden) return;
-    rec = new SR();
-    rec.lang = 'he-IL';
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.maxAlternatives = 3;
-    rec.onresult = e => {
+    clearTimeout(restartTimer);
+    if (!listening || speaking || rec || document.hidden) return;
+    const r = rec = new SR();
+    r.lang = 'he-IL';
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 3;
+
+    // Safari keeps appending to one growing result ("הבא" → "הבא שוב"), so track how much
+    // of each result was already acted on and only parse the new part.
+    const consumed = new Map();
+    let pending = 0;
+    const emit = (i, alts) => {
+      if (speaking || rec !== r) return;
+      const done = consumed.get(i) || 0;
+      const fresh = done ? [alts[0].slice(done).trim()] : alts;
+      if (!fresh[0]) return;
+      consumed.set(i, alts[0].length);
+      handler?.(fresh);
+    };
+    r.onresult = e => {
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        // Skip anything heard while (or just after) we were talking: that's our own voice.
-        if (!r.isFinal || speaking || Date.now() < quietUntil) continue;
-        handler?.([...r].map(a => a.transcript.trim()).filter(Boolean));
+        const res = e.results[i];
+        const alts = [...res].map(a => a.transcript.trim()).filter(Boolean);
+        if (!alts.length) continue;
+        clearTimeout(pending);
+        if (res.isFinal) emit(i, alts);
+        // Safari often never marks results final in continuous mode: act once the words stop changing.
+        else pending = setTimeout(() => emit(i, alts), 700);
       }
     };
-    rec.onerror = e => {
+    r.onstart = () => stateFn?.('listening');
+    r.onerror = e => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         listening = false;
         stateFn?.('denied');
-      }
+      } else if (e.error !== 'no-speech' && e.error !== 'aborted') stateFn?.('error', e.error);
     };
     // Browsers end recognition after a stretch of silence; restart while voice mode is on.
-    rec.onend = () => {
+    r.onend = () => {
+      if (rec !== r) return;
       rec = null;
-      if (!listening) return;
-      setTimeout(start, Date.now() - startedAt < 1000 ? 2000 : 250);
+      scheduleStart(Date.now() - startedAt < 1000 ? 2000 : 250);
     };
     startedAt = Date.now();
-    try { rec.start(); stateFn?.('listening'); } catch {}
+    try { r.start(); }
+    catch (e) { rec = null; stateFn?.('error', e.message); }
   }
 
   function listen(onHeard, onState) {
@@ -93,11 +138,10 @@ const Voice = (() => {
 
   function stopListening() {
     listening = false;
-    try { rec?.abort(); } catch {}
-    rec = null;
+    abortRec();
   }
 
-  document.addEventListener('visibilitychange', () => { if (listening && !document.hidden && !rec) start(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) start(); });
 
   /* ---------- Commands ---------- */
 
