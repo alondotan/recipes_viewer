@@ -224,7 +224,14 @@
       const cached = Drive.cached();
       if (cached.length) renderRecipeList(driveListHtml(cached));
       try {
-        renderRecipeList(driveListHtml(await Drive.list()));
+        let last = 0;
+        const { items, error } = await Drive.list((partial, total) => {
+          if (partial.length === total || Date.now() - last < 300) return;
+          last = Date.now();
+          renderRecipeList(driveListHtml(partial.length > cached.length ? partial : cached), `<span>טוען מתכונים מהדרייב… ${partial.length}/${total}</span>`);
+        });
+        renderRecipeList(driveListHtml(items.filter(it => !(error && it.error === error))),
+          error ? `${ICON.alert}<span>${esc(error)}</span>` : '');
       } catch (e) {
         renderRecipeList(cached.length ? driveListHtml(cached) : [], `${ICON.alert}<span>${esc(e.message)}${cached.length ? ' מוצגת הרשימה השמורה.' : ''}</span>`);
       }

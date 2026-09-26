@@ -21,7 +21,8 @@ const Drive = (() => {
   async function call(url) {
     let res;
     try { res = await fetch(url); }
-    catch { throw new Error('אין חיבור לגוגל דרייב.'); }
+    // A network-level failure is either no connection or Google's anti-abuse page (sent without CORS headers).
+    catch { throw new Error('גוגל דרייב לא מגיב. ייתכן שאין חיבור, או שגוגל חוסם זמנית אחרי הרבה בקשות. נסו שוב בעוד כמה דקות.'); }
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
       try { msg = (await res.json()).error?.message || msg; } catch {}
@@ -58,26 +59,54 @@ const Drive = (() => {
   const cached = () => Object.entries(loadCache()).map(([id, v]) => ({ id, name: v.name, recipe: v.recipe }));
 
   // → [{ id, name, recipe } | { id, name, error }]
-  async function list() {
+  // Downloads only new/changed files, a few at a time: a burst of parallel downloads can trip
+  // Google's anti-abuse block. After repeated failures it stops asking and falls back to the cache.
+  async function list(onProgress) {
     const files = await listFiles();
     const cache = loadCache(), next = {};
-    const items = await Promise.all(files.map(async f => {
-      const hit = cache[f.id];
-      if (hit && hit.modifiedTime === f.modifiedTime) {
-        next[f.id] = { ...hit, name: f.name };
-        return { id: f.id, name: f.name, recipe: hit.recipe };
+    const items = new Array(files.length);
+    let cursor = 0, failures = 0, stopped = null, done = 0;
+
+    const settle = (k, item) => {
+      items[k] = item;
+      if (++done % 10 === 0) saveCache(next);
+      onProgress?.(items.filter(Boolean), files.length);
+    };
+
+    async function worker() {
+      while (cursor < files.length) {
+        const k = cursor++, f = files[k], hit = cache[f.id];
+        if (hit && hit.modifiedTime === f.modifiedTime) {
+          next[f.id] = { ...hit, name: f.name };
+          settle(k, { id: f.id, name: f.name, recipe: hit.recipe });
+          continue;
+        }
+        let error = stopped;
+        if (!error) {
+          try {
+            const recipe = await download(f.id);
+            failures = 0;
+            next[f.id] = { name: f.name, modifiedTime: f.modifiedTime, recipe };
+            settle(k, { id: f.id, name: f.name, recipe });
+            continue;
+          } catch (e) {
+            error = e.message;
+            if (++failures >= 3) stopped = error;
+          }
+        }
+        // Keep an older cached copy rather than showing an error; it's retried next time.
+        if (hit) {
+          next[f.id] = hit;
+          settle(k, { id: f.id, name: f.name, recipe: hit.recipe });
+        } else settle(k, { id: f.id, name: f.name, error });
       }
-      try {
-        const recipe = await download(f.id);
-        next[f.id] = { name: f.name, modifiedTime: f.modifiedTime, recipe };
-        return { id: f.id, name: f.name, recipe };
-      } catch (e) {
-        return { id: f.id, name: f.name, error: e.message };
-      }
-    }));
+    }
+
+    await Promise.all(Array.from({ length: 4 }, worker));
     saveCache(next);
-    return items;
+    return { items, error: stopped };
   }
+
 
   // Fresh copy when online, cached copy otherwise.
   async function get(id) {
