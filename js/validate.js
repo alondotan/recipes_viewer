@@ -22,6 +22,16 @@ function validateRecipe(r) {
     if (o.amount === undefined) add(path, '"maxAmount" דורש "amount"');
     else if (isPos(o.amount) && isPos(o.maxAmount) && o.maxAmount < o.amount) add(path, '"maxAmount" קטן מ-"amount"');
   };
+  const duration = (d, path) => {
+    if (!isObj(d)) return add(path, 'חייב להיות אובייקט');
+    only(d, ['minutes', 'maxMinutes'], path);
+    if (!isPos(d.minutes)) add(path, '"minutes" חובה (מספר חיובי)');
+    optPos(d, 'maxMinutes', path);
+    if (isPos(d.minutes) && isPos(d.maxMinutes) && d.maxMinutes < d.minutes) add(path, '"maxMinutes" קטן מ-"minutes"');
+  };
+  const optEnum = (o, k, values, path) => {
+    if (o[k] !== undefined && !values.includes(o[k])) add(path, `"${k}" חייב להיות אחד מ: ${values.join(', ')}`);
+  };
   const strArr = (o, k, path) => {
     if (o[k] !== undefined && !(Array.isArray(o[k]) && o[k].every(x => typeof x === 'string')))
       add(path, `"${k}" חייב להיות רשימה של טקסטים`);
@@ -30,13 +40,17 @@ function validateRecipe(r) {
   if (!isObj(r)) return ['הקובץ חייב להכיל אובייקט מתכון ({ ... })'];
 
   const R = 'מתכון';
-  only(r, ['$schema', 'schemaVersion', 'id', 'title', 'description', 'author', 'servings', 'yield', 'tags', 'source', 'image', 'notes', 'equipment', 'ingredients', 'steps', 'fullText'], R);
+  only(r, ['$schema', 'schemaVersion', 'id', 'title', 'description', 'author', 'servings', 'yield', 'totalTime', 'activeTime', 'difficulty', 'kashrut', 'tags', 'source', 'image', 'notes', 'equipment', 'ingredients', 'steps', 'fullText'], R);
   if (r.schemaVersion !== undefined && r.schemaVersion !== 1) add(R, '"schemaVersion" לא נתמך (הגרסה הנתמכת: 1)');
   reqStr(r, 'title', R);
   ['$schema', 'id', 'description', 'author', 'source', 'image', 'fullText'].forEach(k => optStr(r, k, R));
   optPos(r, 'servings', R);
   strArr(r, 'tags', R);
   strArr(r, 'notes', R);
+  if (r.totalTime !== undefined) duration(r.totalTime, `${R} › totalTime`);
+  if (r.activeTime !== undefined) duration(r.activeTime, `${R} › activeTime`);
+  optEnum(r, 'difficulty', ['קל', 'בינוני', 'קשה'], R);
+  optEnum(r, 'kashrut', ['בשרי', 'חלבי', 'פרווה'], R);
   if (r.equipment !== undefined && !(Array.isArray(r.equipment) && r.equipment.every(isStr)))
     add(R, '"equipment" חייב להיות רשימה של טקסטים');
 
@@ -74,10 +88,10 @@ function validateRecipe(r) {
   else (r.steps || []).forEach((s, i) => {
     const P = `שלב ${i + 1}`;
     if (!isObj(s)) return add(P, 'חייב להיות אובייקט');
-    only(s, ['id', 'group', 'title', 'instruction', 'ingredients', 'time', 'timers', 'heat', 'temperature', 'tips', 'warning'], P);
+    only(s, ['id', 'group', 'title', 'instruction', 'ingredients', 'time', 'timers', 'heat', 'temperature', 'doneWhen', 'tips', 'warning'], P);
     if (s.id !== undefined && typeof s.id !== 'number' && typeof s.id !== 'string') add(P, '"id" חייב להיות מספר או טקסט');
     reqStr(s, 'instruction', P);
-    ['group', 'title', 'heat', 'warning'].forEach(k => optStr(s, k, P));
+    ['group', 'title', 'heat', 'doneWhen', 'warning'].forEach(k => optStr(s, k, P));
     strArr(s, 'tips', P);
 
     if (s.ingredients !== undefined) {
@@ -123,9 +137,14 @@ function validateRecipe(r) {
       const t = s.temperature;
       if (!isObj(t)) add(Q, 'חייב להיות אובייקט');
       else {
-        only(t, ['value', 'unit', 'note'], Q);
+        only(t, ['value', 'maxValue', 'unit', 'note'], Q);
         if (t.value === undefined) { if (!isStr(t.note)) add(Q, 'צריך "value" (מספר) או "note" (תיאור, למשל: חום גבוה)'); }
         else if (typeof t.value !== 'number' || !isFinite(t.value)) add(Q, '"value" חייב להיות מספר');
+        if (t.maxValue !== undefined) {
+          if (typeof t.maxValue !== 'number' || !isFinite(t.maxValue)) add(Q, '"maxValue" חייב להיות מספר');
+          else if (t.value === undefined) add(Q, '"maxValue" דורש "value"');
+          else if (t.maxValue < t.value) add(Q, '"maxValue" קטן מ-"value"');
+        }
         if (t.unit !== undefined && !['C', 'F'].includes(t.unit)) add(Q, '"unit" חייב להיות "C" או "F"');
         optStr(t, 'note', Q);
       }

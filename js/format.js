@@ -40,7 +40,8 @@ const Fmt = {
 
   temp(t) {
     if (t.value == null) return t.note;
-    const v = (t.unit || 'C') === 'C' ? `${t.value} מעלות` : `${t.value}°F`;
+    const n = t.maxValue != null && t.maxValue !== t.value ? `${t.value}-${t.maxValue}` : t.value;
+    const v = (t.unit || 'C') === 'C' ? `${n} מעלות` : `${n}°F`;
     return t.note ? `${v} · ${t.note}` : v;
   },
 };

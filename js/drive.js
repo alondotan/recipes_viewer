@@ -45,7 +45,8 @@ const Drive = (() => {
       files.push(...data.files);
       page = data.nextPageToken;
     } while (page);
-    return files.filter(f => /\.json$/i.test(f.name));
+    // The folder may also hold the schema (recipe.schema.json), which is not a recipe.
+    return files.filter(f => /\.json$/i.test(f.name) && !/\.schema\.json$/i.test(f.name));
   }
 
   async function download(id) {
