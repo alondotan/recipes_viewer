@@ -29,7 +29,8 @@ const Search = (() => {
   function index(r) {
     return {
       title: norm(r.title),
-      tags: (r.tags || []).map(norm),
+      // Category and cuisine search like tags ("מרק", "אסייתי").
+      tags: [...(r.tags || []), r.category, r.cuisine].filter(Boolean).map(norm),
       ingredients: (r.ingredients || []).map(i => ({ name: i.name, n: norm(i.name) })),
       kashrut: norm(r.kashrut),
       other: norm([r.description, r.author, r.difficulty, ...(r.equipment || [])].filter(Boolean).join(' ')),

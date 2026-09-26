@@ -382,6 +382,7 @@
       listLoading = false;
       setCatalog(list.map(it => ({
         key: it.file, title: it.title, description: it.description,
+        recipe: { category: it.category, cuisine: it.cuisine }, // enough for the dropdown filters
         link: { act: 'open-url', attr: `data-path="${esc(it.file)}"`, href: `?recipe=${encodeURIComponent(it.file)}` },
       })));
     } catch {

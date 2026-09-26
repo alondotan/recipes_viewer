@@ -40,17 +40,28 @@ function validateRecipe(r) {
   if (!isObj(r)) return ['הקובץ חייב להכיל אובייקט מתכון ({ ... })'];
 
   const R = 'מתכון';
-  only(r, ['$schema', 'schemaVersion', 'id', 'title', 'description', 'author', 'servings', 'yield', 'totalTime', 'activeTime', 'difficulty', 'kashrut', 'tags', 'source', 'image', 'notes', 'equipment', 'ingredients', 'steps', 'fullText'], R);
+  only(r, ['$schema', 'schemaVersion', 'id', 'title', 'description', 'author', 'servings', 'maxServings', 'yield', 'totalTime', 'activeTime', 'difficulty', 'kashrut', 'category', 'cuisine', 'mainIngredients', 'tags', 'source', 'image', 'notes', 'equipment', 'ingredients', 'steps', 'fullText'], R);
   if (r.schemaVersion !== undefined && r.schemaVersion !== 1) add(R, '"schemaVersion" לא נתמך (הגרסה הנתמכת: 1)');
   reqStr(r, 'title', R);
   ['$schema', 'id', 'description', 'author', 'source', 'image', 'fullText'].forEach(k => optStr(r, k, R));
   optPos(r, 'servings', R);
+  optPos(r, 'maxServings', R);
+  if (r.maxServings !== undefined) {
+    if (r.servings === undefined) add(R, '"maxServings" דורש "servings"');
+    else if (isPos(r.servings) && isPos(r.maxServings) && r.maxServings < r.servings) add(R, '"maxServings" קטן מ-"servings"');
+  }
   strArr(r, 'tags', R);
   strArr(r, 'notes', R);
   if (r.totalTime !== undefined) duration(r.totalTime, `${R} › totalTime`);
   if (r.activeTime !== undefined) duration(r.activeTime, `${R} › activeTime`);
   optEnum(r, 'difficulty', ['קל', 'בינוני', 'קשה'], R);
   optEnum(r, 'kashrut', ['בשרי', 'חלבי', 'פרווה'], R);
+  optEnum(r, 'category', ['מנה עיקרית', 'תוספת', 'סלט', 'מרק', 'מאפה', 'לחם', 'קינוח', 'חטיף', 'ממרח', 'רוטב', 'שתייה'], R);
+  optEnum(r, 'cuisine', ['ישראלי', 'מזרח תיכוני', 'אסייתי', 'איטלקי', 'צרפתי', 'יווני', 'אמריקאי', 'מקסיקני', 'בינלאומי'], R);
+  if (r.mainIngredients !== undefined) {
+    if (!(Array.isArray(r.mainIngredients) && r.mainIngredients.every(isStr))) add(R, '"mainIngredients" חייב להיות רשימה של טקסטים');
+    else if (r.mainIngredients.length > 5) add(R, '"mainIngredients" עד 5 מרכיבים');
+  }
   if (r.equipment !== undefined && !(Array.isArray(r.equipment) && r.equipment.every(isStr)))
     add(R, '"equipment" חייב להיות רשימה של טקסטים');
 
@@ -58,8 +69,9 @@ function validateRecipe(r) {
     const Q = `${R} › yield`;
     if (!isObj(r.yield)) add(Q, 'חייב להיות אובייקט');
     else {
-      only(r.yield, ['amount', 'unit'], Q);
+      only(r.yield, ['amount', 'maxAmount', 'unit'], Q);
       if (!isPos(r.yield.amount)) add(Q, '"amount" חובה (מספר חיובי)');
+      optRange(r.yield, Q);
       reqStr(r.yield, 'unit', Q);
     }
   }
@@ -88,10 +100,10 @@ function validateRecipe(r) {
   else (r.steps || []).forEach((s, i) => {
     const P = `שלב ${i + 1}`;
     if (!isObj(s)) return add(P, 'חייב להיות אובייקט');
-    only(s, ['id', 'group', 'title', 'instruction', 'ingredients', 'time', 'timers', 'heat', 'temperature', 'doneWhen', 'tips', 'warning'], P);
+    only(s, ['id', 'group', 'method', 'title', 'instruction', 'ingredients', 'time', 'timers', 'heat', 'temperature', 'doneWhen', 'tips', 'warning'], P);
     if (s.id !== undefined && typeof s.id !== 'number' && typeof s.id !== 'string') add(P, '"id" חייב להיות מספר או טקסט');
     reqStr(s, 'instruction', P);
-    ['group', 'title', 'heat', 'doneWhen', 'warning'].forEach(k => optStr(s, k, P));
+    ['group', 'method', 'title', 'heat', 'doneWhen', 'warning'].forEach(k => optStr(s, k, P));
     strArr(s, 'tips', P);
 
     if (s.ingredients !== undefined) {
