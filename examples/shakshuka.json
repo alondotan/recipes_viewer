@@ -1,0 +1,69 @@
+{
+  "$schema": "../schema/recipe.schema.json",
+  "schemaVersion": 1,
+  "id": "shakshuka",
+  "title": "שקשוקה",
+  "description": "שקשוקה ביתית קלאסית במחבת אחת",
+  "servings": 4,
+  "tags": ["ארוחת בוקר", "צמחוני"],
+
+  "ingredients": [
+    { "id": "oil",      "name": "שמן זית",           "amount": 3,   "unit": "כפות" },
+    { "id": "onion",    "name": "בצל",               "amount": 1,   "unit": "יחידה", "note": "קצוץ דק" },
+    { "id": "pepper",   "name": "פלפל אדום",         "amount": 1,   "unit": "יחידה", "note": "חתוך לרצועות" },
+    { "id": "garlic",   "name": "שיני שום",          "amount": 3,   "unit": "יחידות", "note": "פרוסות" },
+    { "id": "paprika",  "name": "פפריקה מתוקה",      "amount": 1,   "unit": "כפית",  "group": "תבלינים" },
+    { "id": "cumin",    "name": "כמון",              "amount": 0.5, "unit": "כפית",  "group": "תבלינים" },
+    { "id": "salt",     "name": "מלח",                                              "group": "תבלינים", "note": "לפי הטעם" },
+    { "id": "tomatoes", "name": "עגבניות מרוסקות",   "amount": 800, "unit": "גרם" },
+    { "id": "eggs",     "name": "ביצים",             "amount": 6,   "unit": "יחידות" },
+    { "id": "parsley",  "name": "פטרוזיליה",         "amount": 0.5, "unit": "צרור", "optional": true, "note": "להגשה" }
+  ],
+
+  "steps": [
+    {
+      "id": 1,
+      "title": "טיגון בצל",
+      "instruction": "מחממים שמן במחבת רחבה על אש בינונית ומטגנים את הבצל עד שמזהיב.",
+      "ingredients": [{ "ref": "oil" }, { "ref": "onion" }],
+      "time": { "minutes": 8, "maxMinutes": 10, "type": "active" },
+      "heat": "בינונית"
+    },
+    {
+      "id": 2,
+      "title": "פלפל ושום",
+      "instruction": "מוסיפים את הפלפל והשום ומטגנים עוד כמה דקות עד שהפלפל מתרכך.",
+      "ingredients": [{ "ref": "pepper" }, { "ref": "garlic" }],
+      "time": { "minutes": 5, "type": "active" }
+    },
+    {
+      "id": 3,
+      "title": "רוטב",
+      "instruction": "מוסיפים תבלינים, מערבבים דקה, ואז מוסיפים את העגבניות. מבשלים על אש נמוכה עד שהרוטב מסמיך.",
+      "ingredients": [{ "ref": "paprika" }, { "ref": "cumin" }, { "ref": "salt" }, { "ref": "tomatoes" }],
+      "time": { "minutes": 15, "maxMinutes": 20, "type": "passive" },
+      "heat": "נמוכה",
+      "tips": ["אם הרוטב יבש מדי, מוסיפים מעט מים."]
+    },
+    {
+      "id": 4,
+      "title": "ביצים",
+      "instruction": "יוצרים גומות ברוטב ושוברים לתוכן את הביצים. מכסים ומבשלים עד שהחלבון מתקשה.",
+      "ingredients": [{ "ref": "eggs" }],
+      "time": { "minutes": 6, "maxMinutes": 8, "type": "passive" },
+      "timers": [
+        { "label": "חלמון נוזלי", "minutes": 6 },
+        { "label": "חלמון קשה",  "minutes": 10 }
+      ],
+      "warning": "לא לערבב אחרי הוספת הביצים."
+    },
+    {
+      "id": 5,
+      "title": "הגשה",
+      "instruction": "מפזרים פטרוזיליה קצוצה ומגישים חם עם לחם.",
+      "ingredients": [{ "ref": "parsley" }]
+    }
+  ],
+
+  "fullText": "שקשוקה\n\nמחממים שמן זית במחבת רחבה ומטגנים בצל קצוץ עד שמזהיב. מוסיפים פלפל אדום ושום ומטגנים עד שהפלפל מתרכך.\n\nמוסיפים פפריקה, כמון ומלח, מערבבים דקה ומוסיפים עגבניות מרוסקות. מבשלים על אש נמוכה 15-20 דקות עד שהרוטב מסמיך.\n\nיוצרים גומות ברוטב, שוברים לתוכן 6 ביצים, מכסים ומבשלים 6-8 דקות. לא לערבב אחרי הוספת הביצים.\n\nמפזרים פטרוזיליה ומגישים חם עם לחם."
+}

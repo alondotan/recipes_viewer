@@ -1,0 +1,4 @@
+# Personal recipes stay local (published site uses examples/ or Google Drive)
+recipes/
+.claude/
+.DS_Store
