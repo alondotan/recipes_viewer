@@ -1,5 +1,7 @@
 'use strict';
 
+const DAY = 24 * 60; // minutes
+
 const Fmt = {
   esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,15 +21,26 @@ const Fmt = {
   minutes(m) {
     if (m < 1) return `${Math.round(m * 60)} שנ'`;
     if (m < 60) return `${+m.toFixed(1)} דק'`;
+    if (m >= DAY && m % DAY === 0) return Fmt.days(m / DAY);
     const h = Math.floor(m / 60), r = Math.round(m % 60);
     return r ? `${h} ש' ${r} דק'` : `${h} ש'`;
+  },
+
+  days(d) {
+    return d === 1 ? 'יום' : d === 2 ? 'יומיים' : `${d} ימים`;
   },
 
   // Hyphen-minus (not en dash) keeps "8-10" in visual LTR order inside RTL text.
   range(a, b) {
     if (b == null || b === a) return Fmt.minutes(a);
     if (a >= 1 && b < 60) return `${+a.toFixed(1)}-${+b.toFixed(1)} דק'`;
+    if (a >= DAY && a % DAY === 0 && b % DAY === 0) return `${a / DAY}-${b / DAY} ימים`;
     return `${Fmt.minutes(a)} - ${Fmt.minutes(b)}`;
+  },
+
+  // "8" or "8-10"
+  num(a, b) {
+    return b != null && b !== a ? `${Fmt.amount(a)}-${Fmt.amount(b)}` : Fmt.amount(a);
   },
 
   // Countdown rounds up so it shows 00:01 until the timer actually ends.
